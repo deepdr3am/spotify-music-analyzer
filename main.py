@@ -49,6 +49,8 @@ app.add_middleware(
 )
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
+# 為了讓 Vite 建置的 assets 能正確被訪問，額外掛載 assets 資料夾
+app.mount("/assets", StaticFiles(directory="static/assets"), name="assets")
 
 # 簡單的記憶體 session：session_id -> {access_token, expires_at, refresh_token}
 SESSIONS: Dict[str, Dict] = {}
