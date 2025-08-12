@@ -268,3 +268,94 @@ body {
     gap: 0.5rem;
   }
 }
+
+/* iOS specific button fixes */
+button, input[type="button"], input[type="submit"], .btn {
+  -webkit-appearance: none !important;
+  -moz-appearance: none !important;
+  appearance: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
+  cursor: pointer;
+  border: none;
+  outline: none;
+  position: relative;
+  z-index: 1;
+  min-height: 44px; /* iOS recommended minimum touch target */
+}
+
+/* iOS Safari specific fixes */
+@supports (-webkit-touch-callout: none) {
+  button {
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+    will-change: transform;
+  }
+  
+  /* Fix for gradient buttons on iOS */
+  .bg-gradient-to-r {
+    background-attachment: fixed !important;
+  }
+  
+  /* Ensure buttons are above other elements */
+  button, .btn {
+    isolation: isolate;
+    z-index: 10 !important;
+  }
+}
+
+/* Touch-friendly styles */
+@media (pointer: coarse) {
+  button, .btn {
+    min-height: 48px;
+    padding: 12px 16px;
+  }
+  
+  /* Larger touch targets for small buttons */
+  .w-6, .w-8 {
+    min-width: 44px !important;
+    min-height: 44px !important;
+  }
+}
+
+/* Fix for invisible text on iOS */
+@media screen and (-webkit-min-device-pixel-ratio: 2) {
+  button, .btn {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+  
+  /* Ensure text is visible */
+  button *, .btn * {
+    -webkit-text-fill-color: initial !important;
+    color: inherit !important;
+  }
+}
+
+/* iOS hover state fixes */
+@media (hover: none) and (pointer: coarse) {
+  button:hover, .btn:hover {
+    transform: none !important;
+  }
+  
+  /* Use active states instead of hover on touch devices */
+  button:active, .btn:active {
+    transform: scale(0.95) !important;
+    transition: transform 0.1s ease !important;
+  }
+}
+
+/* Force hardware acceleration for smoother animations on iOS */
+.transition-all, .transition-transform, button, .btn {
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+  -webkit-perspective: 1000px;
+  perspective: 1000px;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}

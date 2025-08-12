@@ -39,6 +39,9 @@ PRODUCTION_URL = os.getenv("PRODUCTION_URL")
 if PRODUCTION_URL:
     ALLOWED_ORIGINS.append(PRODUCTION_URL)
 
+print(f"DEBUG - CORS ALLOWED_ORIGINS: {ALLOWED_ORIGINS}")
+print(f"DEBUG - REDIRECT_URI: {REDIRECT_URI}")
+
 # 添加 CORS 支援
 app.add_middleware(
     CORSMiddleware,
@@ -293,11 +296,14 @@ async def callback(request: Request, code: str = None, state: str = None, error:
     frontend_url = os.getenv("FRONTEND_URL")
     if not frontend_url:
         # 如果沒有設定 FRONTEND_URL，根據 REDIRECT_URI 推斷
-        if "railway.app" in REDIRECT_URI or "herokuapp.com" in REDIRECT_URI:
+        if "railway.app" in REDIRECT_URI or "herokuapp.com" in REDIRECT_URI or "render.com" in REDIRECT_URI:
             # 生產環境：從 REDIRECT_URI 提取域名
             frontend_url = REDIRECT_URI.replace("/callback", "")
+        elif "localhost:8000" in REDIRECT_URI:
+            # 本地開發環境 - 後端在 8000，前端在 5173
+            frontend_url = "http://localhost:5173"
         else:
-            # 本地開發環境
+            # 其他情況的本地開發環境
             frontend_url = "http://localhost:5173"
     
     # 重定向到前端地址，並將 session_id 作為 URL 參數傳遞
@@ -333,12 +339,28 @@ async def fetch_user_saved_tracks(access_token: str) -> List[Dict]:
     headers = {"Authorization": f"Bearer {access_token}"}
     tracks = []
     params = {"limit": 50, "offset": 0}
+    
     async with httpx.AsyncClient(timeout=20.0) as client:
         while True:
+            print(f"DEBUG - Fetching saved tracks with params: {params}")
             r = await client.get(url, headers=headers, params=params)
+            print(f"DEBUG - Spotify API response status: {r.status_code}")
+            
             if r.status_code == 401:
                 raise HTTPException(status_code=401, detail="access token invalid/expired")
-            j = r.json()
+            elif r.status_code == 403:
+                print(f"DEBUG - 403 Forbidden response: {r.text}")
+                raise HTTPException(status_code=403, detail="Insufficient permissions. Please ensure your Spotify app has 'user-library-read' scope enabled.")
+            elif r.status_code != 200:
+                print(f"DEBUG - Unexpected status code: {r.status_code}, response: {r.text}")
+                raise HTTPException(status_code=r.status_code, detail=f"Spotify API error: {r.status_code}")
+            
+            try:
+                j = r.json()
+            except Exception as e:
+                print(f"ERROR - Failed to parse JSON response: {r.text}")
+                raise HTTPException(status_code=500, detail=f"Invalid response from Spotify API: {str(e)}")
+            
             items = j.get("items", [])
             if not items:
                 break
@@ -346,6 +368,7 @@ async def fetch_user_saved_tracks(access_token: str) -> List[Dict]:
             if j.get("next") is None:
                 break
             params["offset"] += params["limit"]
+    
     return tracks
 
 async def fetch_artists_genres(access_token: str, artist_ids: List[str]) -> Dict[str, List[str]]:
@@ -367,83 +390,117 @@ async def fetch_artists_genres(access_token: str, artist_ids: List[str]) -> Dict
 
 @app.get("/api/analysis")
 async def analysis(request: Request):
-    session_id = get_session_id(request)
-    if not session_id or session_id not in SESSIONS:
-        return JSONResponse({"error": "not_logged_in"}, status_code=401)
-    session = SESSIONS[session_id]
-    await refresh_token_if_needed(session)
-    access_token = session["access_token"]
-
-    tracks = await fetch_user_saved_tracks(access_token)
-    if not tracks:
-        return {"total_tracks": 0, "buckets": {}, "top_genres": []}
-
-    # collect artist ids from saved tracks
-    artist_ids = []
-    for item in tracks:
-        track = item.get("track") or {}
-        artists = track.get("artists", [])
-        for a in artists:
-            artist_ids.append(a["id"])
-    # dedupe
-    artist_ids = list(dict.fromkeys(artist_ids))
-
-    artist_genres = await fetch_artists_genres(access_token, artist_ids)
-
-    # count genre occurences (per artist)
-    genre_counts: Dict[str, int] = {}
-    for aid, genres in artist_genres.items():
-        if not genres:
-            genre_counts.setdefault("unknown", 0)
-            genre_counts["unknown"] += 1
-        for g in genres:
-            genre_counts[g] = genre_counts.get(g, 0) + 1
-
-    # 統計每個藝術家的類型（避免重複計算）
-    artist_bucket_counts: Dict[str, int] = {}
-    processed_artists = set()  # 避免同一個藝術家被重複計算
-    
-    for aid, genres in artist_genres.items():
-        if aid in processed_artists:
-            continue
-        processed_artists.add(aid)
+    try:
+        print(f"DEBUG - Analysis request started")
         
-        if not genres:
-            artist_bucket_counts["Unknown"] = artist_bucket_counts.get("Unknown", 0) + 1
-        else:
-            # 對於每個藝術家，選擇最主要的類型（通常是第一個）
-            primary_genre = genres[0] if genres else "unknown"
-            bucket = map_genre_to_bucket(primary_genre)
-            artist_bucket_counts[bucket] = artist_bucket_counts.get(bucket, 0) + 1
+        session_id = get_session_id(request)
+        print(f"DEBUG - Analysis - Session ID: {session_id}")
+        
+        if not session_id or session_id not in SESSIONS:
+            print(f"DEBUG - Analysis - Session not found or invalid")
+            return JSONResponse({"error": "not_logged_in"}, status_code=401)
+        
+        session = SESSIONS[session_id]
+        print(f"DEBUG - Analysis - Session found, token expires at: {session['expires_at']}")
+        
+        await refresh_token_if_needed(session)
+        access_token = session["access_token"]
 
-    # 合併相似的分類並限制數量
-    final_buckets = {}
-    min_count_threshold = max(1, len(processed_artists) * 0.02)  # 至少佔 2%
-    
-    for bucket, count in artist_bucket_counts.items():
-        if count >= min_count_threshold:
-            final_buckets[bucket] = count
-        else:
-            # 將小分類合併到 "Other"
-            final_buckets["Other"] = final_buckets.get("Other", 0) + count
-    
-    # 如果分類太多（超過10個），合併最小的幾個
-    if len(final_buckets) > 10:
-        sorted_buckets = sorted(final_buckets.items(), key=lambda x: x[1], reverse=True)
-        main_buckets = dict(sorted_buckets[:9])  # 保留前9個
-        other_count = sum(count for _, count in sorted_buckets[9:])  # 其餘合併
-        if other_count > 0:
-            main_buckets["Other"] = other_count
-        final_buckets = main_buckets
+        print(f"DEBUG - Analysis - Fetching user saved tracks...")
+        tracks = await fetch_user_saved_tracks(access_token)
+        print(f"DEBUG - Analysis - Found {len(tracks)} saved tracks")
+        
+        if not tracks:
+            print(f"DEBUG - Analysis - No tracks found, returning empty result")
+            return {"total_tracks": 0, "buckets": {}, "top_genres": []}
 
-    # top N genres
-    top_genres = sorted(genre_counts.items(), key=lambda x: x[1], reverse=True)[:20]
+        # collect artist ids from saved tracks
+        artist_ids = []
+        for item in tracks:
+            track = item.get("track") or {}
+            artists = track.get("artists", [])
+            for a in artists:
+                artist_ids.append(a["id"])
+        # dedupe
+        artist_ids = list(dict.fromkeys(artist_ids))
+        print(f"DEBUG - Analysis - Found {len(artist_ids)} unique artists")
 
-    return {
-        "total_tracks": len(tracks),
-        "buckets": final_buckets,
-        "top_genres": top_genres
-    }
+        print(f"DEBUG - Analysis - Fetching artist genres...")
+        artist_genres = await fetch_artists_genres(access_token, artist_ids)
+        print(f"DEBUG - Analysis - Fetched genres for {len(artist_genres)} artists")
+
+        # count genre occurences (per artist)
+        genre_counts: Dict[str, int] = {}
+        unknown_artists = []  # 追蹤沒有 genres 的藝人
+        
+        for aid, genres in artist_genres.items():
+            if not genres:
+                genre_counts.setdefault("unknown", 0)
+                genre_counts["unknown"] += 1
+                # 記錄沒有 genres 的藝人（用於調試）
+                unknown_artists.append(aid)
+            for g in genres:
+                genre_counts[g] = genre_counts.get(g, 0) + 1
+        
+        print(f"DEBUG - Found {len(unknown_artists)} artists without genres")
+        if unknown_artists:
+            print(f"DEBUG - Artists without genres: {unknown_artists[:5]}...")  # 只顯示前5個
+
+        # 統計每個藝術家的類型（避免重複計算）
+        artist_bucket_counts: Dict[str, int] = {}
+        processed_artists = set()  # 避免同一個藝術家被重複計算
+        
+        for aid, genres in artist_genres.items():
+            if aid in processed_artists:
+                continue
+            processed_artists.add(aid)
+            
+            if not genres:
+                artist_bucket_counts["Unknown"] = artist_bucket_counts.get("Unknown", 0) + 1
+            else:
+                # 對於每個藝術家，選擇最主要的類型（通常是第一個）
+                primary_genre = genres[0] if genres else "unknown"
+                bucket = map_genre_to_bucket(primary_genre)
+                artist_bucket_counts[bucket] = artist_bucket_counts.get(bucket, 0) + 1
+
+        # 合併相似的分類並限制數量
+        final_buckets = {}
+        min_count_threshold = max(1, len(processed_artists) * 0.02)  # 至少佔 2%
+        
+        for bucket, count in artist_bucket_counts.items():
+            if count >= min_count_threshold:
+                final_buckets[bucket] = count
+            else:
+                # 將小分類合併到 "Other"
+                final_buckets["Other"] = final_buckets.get("Other", 0) + count
+        
+        # 如果分類太多（超過10個），合併最小的幾個
+        if len(final_buckets) > 10:
+            sorted_buckets = sorted(final_buckets.items(), key=lambda x: x[1], reverse=True)
+            main_buckets = dict(sorted_buckets[:9])  # 保留前9個
+            other_count = sum(count for _, count in sorted_buckets[9:])  # 其餘合併
+            if other_count > 0:
+                main_buckets["Other"] = other_count
+            final_buckets = main_buckets
+
+        # top N genres
+        top_genres = sorted(genre_counts.items(), key=lambda x: x[1], reverse=True)[:20]
+
+        result = {
+            "total_tracks": len(tracks),
+            "buckets": final_buckets,
+            "top_genres": top_genres
+        }
+        
+        print(f"DEBUG - Analysis - Returning result with {len(final_buckets)} genre buckets")
+        return result
+        
+    except Exception as e:
+        print(f"ERROR - Analysis failed: {str(e)}")
+        print(f"ERROR - Exception type: {type(e).__name__}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
 
 @app.get("/api/status")
 async def login_status(request: Request):
@@ -464,11 +521,32 @@ async def login_status(request: Request):
         # Token 已過期，嘗試刷新
         try:
             await refresh_token_if_needed(session)
-            return JSONResponse({"logged_in": True}, status_code=200)
         except:
             # 刷新失敗，清除無效 session
             del SESSIONS[session_id]
             return JSONResponse({"logged_in": False}, status_code=200)
+    
+    # 獲取用戶基本資料
+    try:
+        access_token = session["access_token"]
+        user_url = "https://api.spotify.com/v1/me"
+        headers = {"Authorization": f"Bearer {access_token}"}
+        
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            user_response = await client.get(user_url, headers=headers)
+            if user_response.status_code == 200:
+                user_data = user_response.json()
+                return JSONResponse({
+                    "logged_in": True, 
+                    "user": {
+                        "display_name": user_data.get("display_name"),
+                        "country": user_data.get("country"),
+                        "followers": user_data.get("followers"),
+                        "images": user_data.get("images", [])
+                    }
+                }, status_code=200)
+    except Exception as e:
+        print(f"DEBUG - Error fetching user data: {e}")
     
     return JSONResponse({"logged_in": True}, status_code=200)
 
@@ -497,23 +575,23 @@ async def top_tracks(request: Request, time_range: str = Query("medium_term", re
         raise HTTPException(status_code=r.status_code, detail="failed to fetch top tracks")
 
     data = r.json()
-    # 回傳詳細資料，包含播放時長等資訊
     results = []
+    
     for item in data.get("items", []):
         results.append({
             "name": item["name"],
             "artists": [{"name": a["name"]} for a in item["artists"]],
             "album": {
                 "name": item["album"]["name"],
-                "images": item["album"].get("images", [])  # ✅ Include album images!
+                "images": item["album"].get("images", [])
             },
-            "popularity": item.get("popularity"),  # 流行度 (0-100)
-            "duration_ms": item.get("duration_ms"),  # ✅ 歌曲時長（毫秒）
-            "explicit": item.get("explicit", False),  # 是否為限制級內容
+            "popularity": item.get("popularity"),
+            "duration_ms": item.get("duration_ms"),
+            "explicit": item.get("explicit", False),
             "id": item["id"],
             "external_urls": item.get("external_urls", {}),
-            "preview_url": item.get("preview_url"),  # ✅ 30秒預覽URL（如果可用）
         })
+    
     return {"time_range": time_range, "top_tracks": results}
 
 @app.get("/api/top-artists")

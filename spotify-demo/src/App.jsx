@@ -9,6 +9,18 @@ import {
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
+// Spotify Icon Component
+const SpotifyIcon = ({ className = "w-6 h-6", color = "currentColor" }) => (
+  <svg
+    className={className}
+    viewBox="0 0 24 24"
+    fill={color}
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.420 1.56-.299.421-1.02.599-1.559.3z"/>
+  </svg>
+);
+
 export default function App() {
   const [loggedIn, setLoggedIn] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -194,27 +206,6 @@ export default function App() {
     return `${minutes}:${seconds.padStart(2, '0')}`;
   }
 
-  // 處理播放預覽
-  function handlePlayPreview(previewUrl, trackName) {
-    if (!previewUrl) {
-      alert(`很抱歉，"${trackName}" 沒有可用的預覽片段`);
-      return;
-    }
-    
-    // 創建新的音頻元素並播放
-    const audio = new Audio(previewUrl);
-    audio.play().catch(err => {
-      console.error('播放失敗:', err);
-      alert('播放失敗，請稍後再試');
-    });
-    
-    // 30秒後自動停止
-    setTimeout(() => {
-      audio.pause();
-      audio.currentTime = 0;
-    }, 30000);
-  }
-
   async function logout() {
     try {
       await fetch("/logout", { credentials: "include" });
@@ -306,10 +297,10 @@ export default function App() {
         <div className="max-w-6xl mx-auto text-center">
           <div className="inline-flex items-center gap-3 mb-4">
             <div className="w-12 h-12 bg-gradient-to-br from-green-400 to-green-600 rounded-2xl flex items-center justify-center shadow-lg">
-              <span className="text-2xl">🎵</span>
+              <SpotifyIcon className="w-7 h-7 text-white" />
             </div>
             <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-green-400 via-blue-500 to-purple-600 bg-clip-text text-transparent">
-              Spotify 音樂分析器
+              Spotifind
             </h1>
           </div>
           <p className="text-lg md:text-xl text-gray-300 max-w-2xl mx-auto">
@@ -330,7 +321,7 @@ export default function App() {
           <div className="bg-gray-800/50 backdrop-blur-xl border border-gray-700/50 p-8 rounded-3xl shadow-2xl hover:shadow-green-500/10 transition-all duration-500">
             <div className="text-center mb-8">
               <div className="w-20 h-20 bg-gradient-to-br from-green-400 to-green-600 rounded-full flex items-center justify-center shadow-xl mx-auto mb-6">
-                <span className="text-3xl">🎧</span>
+                <SpotifyIcon className="w-10 h-10 text-white" />
               </div>
               <h2 className="text-3xl font-bold mb-3 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
                 連接你的 Spotify
@@ -345,7 +336,14 @@ export default function App() {
             <button
               onClick={onConnect}
               disabled={loading}
-              className="w-full bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-semibold py-4 px-6 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-lg hover:shadow-green-500/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-3"
+              className="w-full bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-semibold py-4 px-6 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-lg hover:shadow-green-500/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-3 touch-manipulation"
+              style={{
+                WebkitAppearance: 'none',
+                WebkitTapHighlightColor: 'transparent',
+                minHeight: '48px',
+                position: 'relative',
+                zIndex: 1
+              }}
             >
               {loading ? (
                 <>
@@ -354,7 +352,7 @@ export default function App() {
                 </>
               ) : (
                 <>
-                  <span className="text-xl">�</span>
+                  <SpotifyIcon className="w-5 h-5 text-white" />
                   連接 Spotify 帳號
                 </>
               )}
@@ -374,7 +372,7 @@ export default function App() {
           {/* User Profile Section */}
           {userProfile && (
             <div className="mb-8">
-              <div className="bg-gray-800/50 backdrop-blur-xl border border-gray-700/50 p-6 rounded-3xl shadow-xl">
+              <div className="bg-gray-800/50 backdrop-blur-xl border border-gray-700/50 p-6 rounded-2xl shadow-xl">
                 <div className="flex items-center gap-4">
                   {userProfile.images?.[0] && (
                     <img
@@ -397,13 +395,20 @@ export default function App() {
           )}
 
           {/* Control Panel */}
-          <div className="bg-gray-800/50 backdrop-blur-xl border border-gray-700/50 p-4 md:p-6 rounded-3xl shadow-xl mb-8">
+          <div className="bg-gray-800/50 backdrop-blur-xl border border-gray-700/50 p-4 md:p-6 rounded-2xl shadow-xl mb-8">
             <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-3 md:gap-4">
               {/* 一鍵分析按鈕 */}
               <button
                 onClick={loadAllAnalysisData}
                 disabled={loading}
-                className="bg-gradient-to-r from-green-500 to-blue-600 hover:from-green-600 hover:to-blue-700 text-white px-6 md:px-8 py-3 rounded-xl font-medium transition-all duration-300 transform hover:scale-105 hover:shadow-lg hover:shadow-green-500/25 disabled:opacity-50 flex items-center justify-center gap-2"
+                className="bg-gradient-to-r from-green-500 to-blue-600 hover:from-green-600 hover:to-blue-700 text-white px-6 md:px-8 py-3 rounded-xl font-medium transition-all duration-300 transform hover:scale-105 hover:shadow-lg hover:shadow-green-500/25 disabled:opacity-50 flex items-center justify-center gap-2 touch-manipulation"
+                style={{
+                  WebkitAppearance: 'none',
+                  WebkitTapHighlightColor: 'transparent',
+                  minHeight: '44px',
+                  position: 'relative',
+                  zIndex: 1
+                }}
               >
                 {loading ? (
                   <>
@@ -444,7 +449,14 @@ export default function App() {
               {/* 登出按鈕 */}
               <button
                 onClick={logout}
-                className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white px-4 md:px-6 py-3 rounded-xl font-medium transition-all duration-300 transform hover:scale-105 hover:shadow-lg hover:shadow-red-500/25 flex items-center justify-center gap-2"
+                className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white px-4 md:px-6 py-3 rounded-xl font-medium transition-all duration-300 transform hover:scale-105 hover:shadow-lg hover:shadow-red-500/25 flex items-center justify-center gap-2 touch-manipulation"
+                style={{
+                  WebkitAppearance: 'none',
+                  WebkitTapHighlightColor: 'transparent',
+                  minHeight: '44px',
+                  position: 'relative',
+                  zIndex: 1
+                }}
               >
                 <span className="text-lg">🚪</span>
                 <span className="hidden sm:inline">登出</span>
@@ -621,29 +633,20 @@ export default function App() {
                           </span>
                         </div>
                       </div>
-                      <div className="flex-shrink-0 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        {track.preview_url ? (
-                          <button 
-                            onClick={() => handlePlayPreview(track.preview_url, track.name)}
-                            className="w-6 md:w-8 h-6 md:h-8 bg-purple-500 hover:bg-purple-600 text-white rounded-full flex items-center justify-center transition-colors"
-                            title="播放 30 秒預覽"
-                          >
-                            <span className="text-xs">▶</span>
-                          </button>
-                        ) : (
-                          <div className="w-6 md:w-8 h-6 md:h-8 bg-gray-600 text-gray-400 rounded-full flex items-center justify-center" title="無預覽">
-                            <span className="text-xs">⚠</span>
-                          </div>
-                        )}
+                      <div className="flex-shrink-0 flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                         {track.external_urls?.spotify && (
                           <a 
                             href={track.external_urls.spotify}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="w-6 md:w-8 h-6 md:h-8 bg-green-500 hover:bg-green-600 text-white rounded-full flex items-center justify-center transition-colors"
+                            className="w-6 md:w-8 h-6 md:h-8 bg-green-500 hover:bg-green-600 active:bg-green-700 text-white rounded-full flex items-center justify-center transition-colors touch-manipulation"
                             title="在 Spotify 中開啟"
+                            style={{
+                              WebkitAppearance: 'none',
+                              WebkitTapHighlightColor: 'transparent',
+                            }}
                           >
-                            <span className="text-xs font-bold">S</span>
+                            <SpotifyIcon className="w-3 md:w-4 h-3 md:h-4" color="white" />
                           </a>
                         )}
                       </div>
@@ -709,15 +712,19 @@ export default function App() {
                         )}
 
                         {/* 藝人操作按鈕 */}
-                        <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                           {artist.external_urls?.spotify && (
                             <a 
                               href={artist.external_urls.spotify}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 bg-green-500 hover:bg-green-600 text-white text-xs px-2 py-1 rounded-full transition-colors"
+                              className="inline-flex items-center gap-1 bg-green-500 hover:bg-green-600 active:bg-green-700 text-white text-xs px-2 py-1 rounded-full transition-colors touch-manipulation"
+                              style={{
+                                WebkitAppearance: 'none',
+                                WebkitTapHighlightColor: 'transparent',
+                              }}
                             >
-                              <span className="font-bold">S</span>
+                              <SpotifyIcon className="w-3 h-3" color="white" />
                               <span>查看</span>
                             </a>
                           )}
@@ -740,7 +747,7 @@ export default function App() {
               <span className="font-semibold">Spotify Web API</span>
             </div>
             <p className="text-gray-500 text-xs mt-2">
-              © 2024 音樂分析器 • 僅用於個人音樂品味分析
+              © 2024 Spotifind • 僅用於個人音樂品味分析
             </p>
           </div>
         </div>
