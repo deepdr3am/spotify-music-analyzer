@@ -289,16 +289,28 @@ async def callback(request: Request, code: str = None, state: str = None, error:
         "expires_at": expires_at,
     }
 
+    # 動態判斷前端 URL - 根據環境決定重新導向位置
+    frontend_url = os.getenv("FRONTEND_URL")
+    if not frontend_url:
+        # 如果沒有設定 FRONTEND_URL，根據 REDIRECT_URI 推斷
+        if "railway.app" in REDIRECT_URI or "herokuapp.com" in REDIRECT_URI:
+            # 生產環境：從 REDIRECT_URI 提取域名
+            frontend_url = REDIRECT_URI.replace("/callback", "")
+        else:
+            # 本地開發環境
+            frontend_url = "http://localhost:5173"
+    
     # 重定向到前端地址，並將 session_id 作為 URL 參數傳遞
-    response = RedirectResponse(url=f"http://localhost:5173?login=success&session={session_id}")
+    response = RedirectResponse(url=f"{frontend_url}?login=success&session={session_id}")
     # 同時也嘗試設置 cookie（雖然可能不會跨域傳遞）
     response.set_cookie(
         "session_id", 
         session_id, 
         httponly=False,
-        secure=False,
+        secure="https" in frontend_url,  # HTTPS 環境下啟用 secure
         samesite="lax"
     )
+    print(f"DEBUG - Frontend URL: {frontend_url}")
     print(f"DEBUG - Setting session cookie: {session_id}")
     print(f"DEBUG - Redirecting with session in URL")
     return response
