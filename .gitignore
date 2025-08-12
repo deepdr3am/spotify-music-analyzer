@@ -37,7 +37,7 @@ yarn-debug.log*
 yarn-error.log*
 
 # 前端建置檔案（會在部署時重新建置）
-spotify-demo/dist/
+# spotify-demo/dist/  # 註解掉，讓 dist 可以被推送用於部署
 spotify-demo/node_modules/
 
 # IDE 設定檔案

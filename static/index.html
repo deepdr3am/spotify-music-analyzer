@@ -1,189 +1,27 @@
-<!DOCTYPE html>
-<html lang="en" >
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Spotify 音樂分析 - 精緻 Demo</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-</head>
-<body class="bg-gray-900 text-gray-100 font-sans min-h-screen flex flex-col items-center p-6">
-
-  <h1 class="text-4xl font-extrabold mb-8 text-center select-none">Spotify 音樂風格與熱門分析</h1>
-
-  <button id="btn-login" class="bg-green-600 hover:bg-green-700 active:bg-green-800 text-white rounded-full py-3 px-8 text-lg transition disabled:opacity-50" >
-    Connect with Spotify
-  </button>
-  <button id="btn-logout" class="hidden bg-red-600 hover:bg-red-700 active:bg-red-800 text-white rounded-full py-3 px-8 text-lg transition" >
-    Logout
-  </button>
-
-  <div id="content" class="hidden max-w-4xl w-full mt-8 space-y-10">
-    <section>
-      <h2 class="text-2xl font-semibold mb-4">你的音樂風格分佈</h2>
-      <canvas id="genreChart" class="max-w-md mx-auto"></canvas>
-    </section>
-
-    <section>
-      <h2 class="text-2xl font-semibold mb-4">最常聽的歌曲 (近一月)</h2>
-      <ul id="top-tracks" class="space-y-2 max-w-xl mx-auto"></ul>
-    </section>
-
-    <section>
-      <h2 class="text-2xl font-semibold mb-4">最常聽的藝人 (近半年)</h2>
-      <ul id="top-artists" class="space-y-2 max-w-xl mx-auto"></ul>
-    </section>
-  </div>
-
-  <div id="loader" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-    <div class="loader ease-linear rounded-full border-8 border-t-8 border-gray-200 border-t-green-600 h-20 w-20"></div>
-  </div>
-
-  <style>
-    .loader {
-      border-top-color: #22c55e;
-      animation: spin 1s linear infinite;
-    }
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-    a:hover {
-      text-decoration: underline;
-    }
-  </style>
-
-  <script>
-    const btnLogin = document.getElementById('btn-login')
-    const btnLogout = document.getElementById('btn-logout')
-    const content = document.getElementById('content')
-    const loader = document.getElementById('loader')
-    const topTracksList = document.getElementById('top-tracks')
-    const topArtistsList = document.getElementById('top-artists')
-    const ctx = document.getElementById('genreChart').getContext('2d')
-    let genreChart
-
-    function showLoader(show) {
-      loader.classList.toggle('hidden', !show)
-    }
-    function showContent(show) {
-      content.classList.toggle('hidden', !show)
-      btnLogout.classList.toggle('hidden', !show)
-      btnLogin.classList.toggle('hidden', show)
-    }
-
-    async function fetchGenreAnalysis() {
-      showLoader(true)
-      try {
-        const res = await fetch('/api/analysis')
-        if (!res.ok) throw new Error('未登入或錯誤')
-        const data = await res.json()
-        if (!data.buckets) throw new Error('無法取得資料')
-
-        const labels = Object.keys(data.buckets)
-        const values = Object.values(data.buckets)
-
-        if (genreChart) genreChart.destroy()
-
-        genreChart = new Chart(ctx, {
-          type: 'doughnut',
-          data: {
-            labels,
-            datasets: [{
-              data: values,
-              backgroundColor: [
-                '#22c55e', '#134e4a', '#db2777', '#2563eb',
-                '#eab308', '#14b8a6', '#7c3aed', '#f97316',
-                '#d1d5db', '#6b21a8'
-              ]
-            }]
-          },
-          options: {
-            plugins: {
-              legend: {
-                labels: {
-                  color: '#eee',
-                  font: { size: 14 }
-                }
-              }
-            }
-          }
-        })
-      } catch(e) {
-        console.warn(e)
-        showContent(false)
-      } finally {
-        showLoader(false)
-      }
-    }
-
-    async function fetchTopTracks() {
-      topTracksList.innerHTML = ''
-      const res = await fetch('/api/top-tracks?time_range=short_term')
-      if (!res.ok) return
-      const data = await res.json()
-      data.top_tracks.forEach(t => {
-        const li = document.createElement('li')
-        li.className = 'bg-gray-800 rounded px-4 py-2'
-        li.innerHTML = `<a href="${t.external_url}" target="_blank" rel="noopener" class="font-semibold hover:text-green-400">${t.name}</a> <br/><small class="text-gray-400">by ${t.artists.join(', ')}</small>`
-        topTracksList.appendChild(li)
-      })
-    }
-
-    async function fetchTopArtists() {
-      topArtistsList.innerHTML = ''
-      const res = await fetch('/api/top-artists?time_range=medium_term')
-      if (!res.ok) return
-      const data = await res.json()
-      data.top_artists.forEach(a => {
-        const li = document.createElement('li')
-        li.className = 'bg-gray-800 rounded px-4 py-2'
-        li.innerHTML = `<a href="${a.external_url}" target="_blank" rel="noopener" class="font-semibold hover:text-green-400">${a.name}</a> <br/><small class="text-gray-400">Genres: ${a.genres.join(', ')}</small>`
-        topArtistsList.appendChild(li)
-      })
-    }
-
-    async function checkLogin() {
-      showLoader(true)
-      try {
-        const res = await fetch('/api/analysis')
-        if (res.ok) {
-          showContent(true)
-          localStorage.setItem('spotify_logged_in', 'true')
-          await fetchGenreAnalysis()
-          await fetchTopTracks()
-          await fetchTopArtists()
-        } else {
-          showContent(false)
-          localStorage.removeItem('spotify_logged_in')
-        }
-      } catch {
-        showContent(false)
-        localStorage.removeItem('spotify_logged_in')
-      } finally {
-        showLoader(false)
-      }
-    }
-
-    btnLogin.addEventListener('click', () => {
-      btnLogin.disabled = true
-      btnLogin.textContent = 'Connecting...'
-      window.location.href = '/login'
-    })
-
-    btnLogout.addEventListener('click', async () => {
-      showLoader(true)
-      await fetch('/logout')
-      localStorage.removeItem('spotify_logged_in')
-      showContent(false)
-      btnLogin.disabled = false
-      btnLogin.textContent = 'Connect with Spotify'
-      showLoader(false)
-    })
-
-    // 頁面載入時判斷是否曾登入
-    if (localStorage.getItem('spotify_logged_in') === 'true') {
-      checkLogin()
-    }
-  </script>
-</body>
+<!doctype html>
+<html lang="zh-TW">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Spotify 音樂品味分析器 - 深度分析你的音樂喜好，發現你的聽歌模式" />
+    <meta name="keywords" content="Spotify, 音樂分析, 音樂品味, 音樂統計, 歌曲分析" />
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Favicon -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+    
+    <title>Spotify 音樂品味分析器 | 發現你的音樂 DNA</title>
+    <script type="module" crossorigin src="/assets/index-CnBisUPS.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-89ZzaUCV.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
 </html>
